@@ -12,6 +12,7 @@ class GameState:
     """This class represents the Gamestate"""
 
     MATCH_LEN = 3
+    F_SIZE = 3
 
     def __init__(self, rows: int, columns: int):
         self._active = True
@@ -19,10 +20,12 @@ class GameState:
         self._landed_faller = False
         self._faller_complete = True
         self._matched = False
+        self._one_step_delay = False
         self._rows = rows
         self._columns = columns
         self._field = []
         self._faller = None
+        self._previous_faller = None
         self._match_set = set()
 
     def get_total_rows(self) -> int:
@@ -62,6 +65,17 @@ class GameState:
             if row == element[0] and col == element[1]:
                 return True
         return False
+
+    def get_faller_size(self) -> int:
+        """This function returns the faller size"""
+        return self.F_SIZE
+
+    def get_faller_colors(self) -> list:
+        """This function returns the faller list to the gui"""
+        if not self._faller:
+            return self._previous_faller.get_lst()
+        else:
+            return self._faller.get_lst()
 
     def is_faller(self, faller_row: int, faller_col: int) -> bool:
         """This function prints true when it is a faller"""
@@ -112,12 +126,21 @@ class GameState:
                     self._field[num][self._faller.get_column()].change_contents(self._faller.get_reversed_lst()[count])
                     count += 1
 
+        elif self._one_step_delay:
+            self._one_step_delay = False
+            self._matched = True
+            self.match_exists()
+
         elif self._matched:
             self.remove_matches()
-            self.reset_faller()
             self.reset_match_set()
             self._matched = False
-            self._faller_complete = True
+            if self.match_exists():
+                self._one_step_delay = True
+                self.reset_match_set()
+            else:
+                self.reset_faller()
+                self._faller_complete = True
 
         elif not self._active_faller:
             self._landed_faller = False
@@ -432,6 +455,7 @@ class GameState:
         self._match_set = set()
 
     def reset_faller(self) -> None:
+        self._previous_faller = self._faller
         self._faller = None
 
     def rotate_faller(self) -> None:

@@ -16,13 +16,20 @@ class ColumnsGame:
 
     TOTAL_ROW = 12
     TOTAL_COL = 6
-    NUM_COLORS = 10
+    NUM_COLORS = 6
 
     def __init__(self):
         self._running = True
+        self._start_screen = True
         self._quit = False
         self._width = 700
         self._height = 550
+        self._last_time = 0
+        self._event_last_time = 0
+        self._event_left = False
+        self._event_right = False
+        self._event_down = False
+        self._score = 0
 
     def run(self) -> None:
         """This function runs the GUI"""
@@ -32,23 +39,45 @@ class ColumnsGame:
         pygame.init()
         self._resize_surface((self._width, self._height))
         clock = pygame.time.Clock()
-        last_time = pygame.time.get_ticks()
+        self._last_time = pygame.time.get_ticks()
 
-        self._draw_field(game_state)
+        # wait for the start screen
+        while self._start_screen:
+            clock.tick(30)
+            self._handle_events(game_state)
+            if pygame.time.get_ticks() - self._last_time > 2500:
+                self._start_screen = False
+                self._last_time = pygame.time.get_ticks()
+            self._run_start_screen()
+
         self._create_new_faller(game_state)
+        self._draw_field(game_state)
 
+        # start the music
+        pygame.mixer.Channel(0).set_volume(0.1)
+        pygame.mixer.Channel(0).play(pygame.mixer.Sound("columns.wav"), -1)
+
+        # main loop
         while self._running:
             clock.tick(30)
             self._handle_events(game_state)
 
-            if not self._quit and pygame.time.get_ticks() - last_time > 200:
+            if not self._quit and pygame.time.get_ticks() - self._last_time > 650:
                 if not game_state.active_game():
+                    pygame.mixer.Channel(0).stop()
                     self._quit = True
                 if game_state.faller_complete():
                     self._create_new_faller(game_state)
                 else:
                     game_state.move_faller()
-                last_time = pygame.time.get_ticks()
+                    if game_state.landed_faller():
+                        pygame.mixer.Channel(1).set_volume(0.1)
+                        pygame.mixer.Channel(1).play(pygame.mixer.Sound("landed.wav"))
+                    if game_state.match_found():
+                        self._score += len(game_state.get_match_lst())
+                        pygame.mixer.Channel(2).set_volume(0.3)
+                        pygame.mixer.Channel(2).play(pygame.mixer.Sound("match.wav"))
+                self._last_time = pygame.time.get_ticks()
 
             self._draw_field(game_state)
 
@@ -64,11 +93,42 @@ class ColumnsGame:
             field.append(new_column)
         return field
 
+    def _run_start_screen(self):
+        """This function draws the start screen"""
+        surface = pygame.display.get_surface()
+
+        surface.fill(pygame.Color(128, 246, 115))
+
+        # logo
+        logo = pygame.image.load('columns_img.png')
+        surface.blit(logo,(self._width//2 - logo.get_rect().size[0]//2,
+                           self._height//3 - logo.get_rect().size[1]//2))
+
+        # name
+        font = pygame.font.SysFont("Agency FB", 30)
+        created_by = font.render("Created by: Kai Malloy", True, (0, 0, 0))
+
+        surface.blit(created_by, (self._width//2 - font.size("Created by: Kai Malloy")[0]//2,
+                                  self._height//2 + font.size("H")[1]//3))
+
+        # copyright
+        font = pygame.font.SysFont("Times New Roman", 15)
+        cpyright = font.render("Created for educational purposes only. No copyright intended.", True, (0, 0, 0))
+
+        surface.blit(cpyright, (self._width//2 -
+                                  font.size("Created for educational purposes only. No copyright intended.")[0]//2,
+                                  self._height - font.size("H")[1]))
+
+        pygame.display.flip()
+
+
     def _create_new_faller(self, game_state: columns_gamestate.GameState) -> None:
         """This function creates a new faller"""
-        faller_1 = int(round(random.random() * (self.NUM_COLORS - 1)))
-        faller_2 = int(round(random.random() * (self.NUM_COLORS - 1)))
-        faller_3 = int(round(random.random() * (self.NUM_COLORS - 1)))
+        faller_1, faller_2, faller_3 = 0, 0, 0
+        while faller_1 == faller_2 and faller_1 == faller_3 and faller_2 == faller_3:
+            faller_1 = int(round(random.random() * (self.NUM_COLORS - 1)))
+            faller_2 = int(round(random.random() * (self.NUM_COLORS - 1)))
+            faller_3 = int(round(random.random() * (self.NUM_COLORS - 1)))
         faller_loc = int(round(random.random() * (self.TOTAL_COL - 1)))
 
         game_state.new_faller([str(faller_1), str(faller_2), str(faller_3)], faller_loc)
@@ -123,16 +183,50 @@ class ColumnsGame:
                         color = self._choose_color(int(field[row][col].get_contents()))
                     pygame.draw.rect(surface, color, (x + 2, y + 2, margin_x - 3, margin_y - 3))
 
+        
         pygame.draw.rect(surface, white, (column_start_x, column_start_y,
                                           margin_x * self.TOTAL_COL, margin_y * self.TOTAL_ROW), line_width)
 
+
+        
+        # faller hint block
+        block_start_x = column_start_x - margin_x - margin_x/2
+        block_start_y = column_start_y
+
+        pygame.draw.rect(surface, black,(block_start_x, block_start_y,
+                                          margin_x + 2, margin_y * 3 + 2))
+
+        for num in range(game_state.get_faller_size()):
+            hint_start_x = block_start_x + 2
+            hint_start_y = block_start_y + margin_y * num + 2
+            pygame.draw.rect(surface, self._choose_color(int(game_state.get_faller_colors()[num])),
+                             (hint_start_x, hint_start_y, margin_x - 2, margin_y - 2))
+
+        # Text
+        left_x = column_start_x
+        right_x = column_start_x + margin_x * self.TOTAL_COL
+        bottom_y = column_start_y + margin_y * self.TOTAL_ROW
+
+        font = pygame.font.SysFont("comicsansms", 20)
+        score_text = font.render("SCORE:", True, (255,215,0), black)
+        score = font.render(str(self._score), True, (255,215,0), black)
+        
+        surface.blit(score_text, (left_x - margin_x * 4, bottom_y - margin_y * 3))
+
+        pygame.draw.rect(surface, black, (left_x - margin_x * 4,
+                                            bottom_y - margin_y * 3 + font.size("H")[1],
+                                            margin_x * 3, font.size("H")[1]))
+        
+        surface.blit(score, (left_x - margin_x  - font.size(str(self._score))[0],
+                             bottom_y - margin_y * 3 + font.size("H")[1]))
+    
         pygame.display.flip()
 
     def _choose_color(self, num: int) -> (int, int, int):
         """This function chooses colors based on a list of predetermined colors"""
-        # Red, Orange, Yellow, Mint, Turquoise, Blue, Navy, Purple, Pink, Brown
-        colors = [(255, 51, 51), (255, 150, 0), (255, 255, 51), (0, 255, 128), (0, 255, 255),
-                  (0, 128, 255), (0, 76, 153), (178, 102, 255), (255, 148, 202),  (153, 76, 0)]
+        # Red, Orange, Yellow, Green, Blue, Purple
+        colors = [(255, 51, 51), (255, 150, 0), (255, 255, 51),
+                  (50, 205, 50), (0, 191, 255), (186, 85, 211)]
         return colors[num]
 
     def _handle_events(self, game_state: columns_gamestate.GameState) -> None:
@@ -140,20 +234,56 @@ class ColumnsGame:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self._end_game()
-            elif event.type == pygame.VIDEORESIZE:
-                self._resize_surface(event.size)
+##            elif event.type == pygame.VIDEORESIZE:
+##                self._resize_surface(event.size)
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
+                    pygame.mixer.Channel(3).set_volume(0.1)
+                    pygame.mixer.Channel(3).play(pygame.mixer.Sound("rotate.wav"))
                     game_state.rotate_faller()
                 elif event.key == pygame.K_LEFT:
+                    self._event_left = True
                     game_state.move_faller_left()
                 elif event.key == pygame.K_RIGHT:
+                    self._event_right = True
                     game_state.move_faller_right()
+                elif event.key == pygame.K_DOWN and game_state.active_faller():
+                    self._event_down = True
+                    game_state.move_faller()
+                    self._last_time = pygame.time.get_ticks()
+                    if game_state.landed_faller():
+                        pygame.mixer.Channel(1).set_volume(0.1)
+                        pygame.mixer.Channel(1).play(pygame.mixer.Sound("landed.wav"))
+                # set the last time for continuous button presses
+                self._event_last_time = pygame.time.get_ticks()
+            elif event.type == pygame.KEYUP:
+                if event.key == pygame.K_LEFT:
+                    self._event_left = False
+                elif event.key == pygame.K_RIGHT:
+                    self._event_right = False
+                elif event.key == pygame.K_DOWN:
+                    self._event_down = False
+
+        # if enough time elapses while holding down key, move rapidly
+        if self._event_left and pygame.time.get_ticks() - self._event_last_time > 300:
+            game_state.move_faller_left()
+        elif self._event_right and pygame.time.get_ticks() - self._event_last_time > 300:
+            game_state.move_faller_right()
+        elif self._event_down and pygame.time.get_ticks() - self._event_last_time > 300 \
+                              and game_state.active_faller():
+            game_state.move_faller()
+            self._last_time = pygame.time.get_ticks()
+            if game_state.landed_faller():
+                        pygame.mixer.Channel(1).set_volume(0.1)
+                        pygame.mixer.Channel(1).play(pygame.mixer.Sound("landed.wav"))
+                
+
 
     def _resize_surface(self, size: (int, int)) -> None:
         """This function handles resizing"""
         self._width, self._height = size
-        pygame.display.set_mode(size, pygame.RESIZABLE)
+        # took out pygame.RESIZABLE
+        pygame.display.set_mode(size)
 
     def _end_game(self) -> None:
         """This function ends the game"""

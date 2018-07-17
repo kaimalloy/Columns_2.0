@@ -22,6 +22,7 @@ class ColumnsGame:
         self._running = True
         self._start_screen = True
         self._quit = False
+        self._game_over = False
         self._width = 700
         self._height = 550
         self._last_time = 0
@@ -45,10 +46,12 @@ class ColumnsGame:
         while self._start_screen:
             clock.tick(30)
             self._handle_events(game_state)
-            if pygame.time.get_ticks() - self._last_time > 2500:
+            if pygame.time.get_ticks() - self._last_time > 2000:
                 self._start_screen = False
                 self._last_time = pygame.time.get_ticks()
             self._run_start_screen()
+            if not self._running:
+                pygame.quit()
 
         self._create_new_faller(game_state)
         self._draw_field(game_state)
@@ -57,15 +60,17 @@ class ColumnsGame:
         pygame.mixer.Channel(0).set_volume(0.1)
         pygame.mixer.Channel(0).play(pygame.mixer.Sound("columns.wav"), -1)
 
+
         # main loop
         while self._running:
             clock.tick(30)
             self._handle_events(game_state)
-
+                
             if not self._quit and pygame.time.get_ticks() - self._last_time > 650:
                 if not game_state.active_game():
                     pygame.mixer.Channel(0).stop()
                     self._quit = True
+                    self._game_over = True
                 if game_state.faller_complete():
                     self._create_new_faller(game_state)
                 else:
@@ -79,7 +84,12 @@ class ColumnsGame:
                         pygame.mixer.Channel(2).play(pygame.mixer.Sound("match.wav"))
                 self._last_time = pygame.time.get_ticks()
 
-            self._draw_field(game_state)
+            if self._game_over:
+                if pygame.time.get_ticks() - self._last_time > 2000:
+                    self._game_over = False
+                self._draw_game_over()
+            else:
+                self._draw_field(game_state)
 
         pygame.quit()
 
@@ -221,6 +231,19 @@ class ColumnsGame:
                              bottom_y - margin_y * 3 + font.size("H")[1]))
     
         pygame.display.flip()
+
+    def _draw_game_over(self) -> None:
+         surface = pygame.display.get_surface()
+
+         surface.fill(pygame.Color(128, 246, 115))
+
+         font = pygame.font.SysFont("Agency FB", 100, True)
+         game_over_text = font.render("GAME OVER", True, (0 ,0 ,0))
+
+         surface.blit(game_over_text, (self._width//2 - font.size("GAME OVER")[0]//2,
+                                  self._height//2 - font.size("H")[1]//2))
+
+         pygame.display.flip()
 
     def _choose_color(self, num: int) -> (int, int, int):
         """This function chooses colors based on a list of predetermined colors"""
